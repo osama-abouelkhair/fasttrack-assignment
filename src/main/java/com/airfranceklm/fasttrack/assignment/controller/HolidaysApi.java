@@ -1,16 +1,15 @@
 package com.airfranceklm.fasttrack.assignment.controller;
 
-import java.time.Instant;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
+import com.airfranceklm.fasttrack.assignment.service.HolidaysService;
 import io.swagger.v3.oas.annotations.Operation;
+import lombok.AllArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
-import com.airfranceklm.fasttrack.assignment.resources.Holiday;
+import com.airfranceklm.fasttrack.assignment.resources.HolidayDTO;
 
 import javax.validation.Valid;
 
@@ -24,7 +23,10 @@ import javax.validation.Valid;
  */
 @RestController
 @RequestMapping("/holidays")
+@AllArgsConstructor
 public class HolidaysApi {
+
+    private HolidaysService holidaysService;
 
     /**
      * Retrieves the list of holidays for a given employee based on their employee ID.
@@ -35,19 +37,14 @@ public class HolidaysApi {
      * <p>HTTP Status: {@code 200 OK} on success.
      *
      * @param employeeId the ID of the employee for whom the holidays are being fetched
-     * @return a list of {@link Holiday} objects representing the holidays of the employee
+     * @return a list of {@link HolidayDTO} objects representing the holidays of the employee
      */
     @Operation(summary = "Get an employee holidays",
             description = "Returns holidays as per the employee id")
     @GetMapping
     @ResponseStatus(HttpStatus.OK)
-    public List<Holiday> getHolidays(@RequestParam String employeeId) {
-        return List.of(new Holiday(UUID.randomUUID().toString(),
-                "label",
-                "klm-012",
-                Instant.now().atOffset(ZoneOffset.UTC).toString(),
-                Instant.now().atOffset(ZoneOffset.UTC).toString(),
-                "DRAFT"));
+    public List<HolidayDTO> getHolidays(@RequestParam String employeeId) {
+        return holidaysService.geyHolidays(employeeId);
     }
 
     /**
@@ -58,17 +55,16 @@ public class HolidaysApi {
      *
      * <p>HTTP Status: {@code 201 Created} on success.
      *
-     * @param holiday the {@link Holiday} object containing the holiday details to be created
-     * @return the created {@link Holiday} object with the same details provided in the request
+     * @param holidayDTO the {@link HolidayDTO} object containing the holiday details to be created
+     * @return the created {@link HolidayDTO} object with the same details provided in the request
      */
     @Operation(
             summary = "Creates a holiday",
             description = "Creates a holiday by providing the holiday details and returns the created holiday.")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Holiday createHoliday(@Valid @RequestBody Holiday holiday) {
-        OffsetDateTime date = OffsetDateTime.parse(holiday.getStartOfHoliday());
-        return holiday;
+    public HolidayDTO createHoliday(@Valid @RequestBody HolidayDTO holidayDTO) {
+        return holidaysService.createHoliday(holidayDTO);
     }
 
     /**
@@ -79,16 +75,16 @@ public class HolidaysApi {
      *
      * <p>HTTP Status: {@code 201 Created} on success.
      *
-     * @param holiday the {@link Holiday} object containing the updated holiday details
-     * @return the updated {@link Holiday} object with the modified details
+     * @param holidayDTO the {@link HolidayDTO} object containing the updated holiday details
+     * @return the updated {@link HolidayDTO} object with the modified details
      */
     @Operation(
             summary = "Updates a holiday",
             description = "Updates a holiday by providing updated holiday details and returns the updated holiday.")
     @PutMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Holiday updateHoliday(@RequestBody Holiday holiday) {
-        return holiday;
+    public HolidayDTO updateHoliday(@RequestBody HolidayDTO holidayDTO) {
+        return holidaysService.updateHoliday(holidayDTO);
     }
 
 
@@ -105,6 +101,7 @@ public class HolidaysApi {
             description = "Deletes a holiday without returning any content.")
     @DeleteMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteHoliday() {
+    public void deleteHoliday(@RequestParam String holidayId) {
+        holidaysService.deleteHoliday(UUID.fromString(holidayId));
     }
 }
