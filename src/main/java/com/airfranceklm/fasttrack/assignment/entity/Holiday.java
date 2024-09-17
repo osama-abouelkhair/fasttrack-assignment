@@ -5,10 +5,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
+import javax.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -21,21 +18,21 @@ public class Holiday {
 
     @Id
     @GeneratedValue(generator = "UUID")
-//    @GenericGenerator(
-//            name = "UUID",
-//            strategy = "org.hibernate.id.UUIDGenerator"
-//    )
     private UUID id;
 
     private String label;
-
-    private String employeeId;
 
     private Instant startOfHoliday;
 
     private Instant endOfHoliday;
 
     private Status status;
+
+    // To not allow employee changes through holiday
+    @ManyToOne(cascade = CascadeType.DETACH)
+    // Setting the foreign key column name and to not allow null
+    @JoinColumn(name = "employee_id", referencedColumnName = "id", nullable = false)
+    private Employee employee;
 }
 
 

@@ -6,6 +6,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import com.airfranceklm.fasttrack.assignment.service.exceptions.InvalidHolidayException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -70,6 +72,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<Object> handleFormat(DateTimeParseException ex) {
         Map<String, List<String>> body = new HashMap<>();
         body.put("errors", List.of("DateTime format is wrong"));
+        return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(InvalidHolidayException.class)
+    public ResponseEntity<Object> handleHolidayExceptions(InvalidHolidayException ex) {
+        Map<String, List<String>> body = new HashMap<>();
+        body.put("errors", List.of(ex.getMessage()));
         return new ResponseEntity<>(body, HttpStatus.BAD_REQUEST);
     }
 

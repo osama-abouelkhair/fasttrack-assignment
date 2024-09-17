@@ -1,14 +1,23 @@
 package com.airfranceklm.fasttrack.assignment.service;
 
+import com.airfranceklm.fasttrack.assignment.entity.Employee;
 import com.airfranceklm.fasttrack.assignment.entity.Holiday;
 import com.airfranceklm.fasttrack.assignment.entity.Status;
+import com.airfranceklm.fasttrack.assignment.repository.EmployeeRepository;
 import com.airfranceklm.fasttrack.assignment.repository.HolidayRepository;
 import com.airfranceklm.fasttrack.assignment.resources.HolidayDTO;
+import com.airfranceklm.fasttrack.assignment.service.exceptions.InvalidHolidayCancellationException;
+import com.airfranceklm.fasttrack.assignment.service.exceptions.InvalidHolidayGapException;
+import com.airfranceklm.fasttrack.assignment.service.exceptions.InvalidHolidayOverlapException;
+import com.airfranceklm.fasttrack.assignment.service.exceptions.InvalidHolidayStartDateException;
 import lombok.AllArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -29,6 +38,8 @@ public class HolidaysService {
 
     private HolidayRepository holidayRepository;
 
+    private EmployeeRepository employeeRepository;
+
     private ModelMapper modelMapper;
 
     /**
@@ -42,12 +53,14 @@ public class HolidaysService {
      * @return a list of {@link HolidayDTO} objects representing the holidays of the employee
      */
     public List<HolidayDTO> geyHolidays(String employeeId) {
-        return holidayRepository.findByEmployeeId(employeeId)
+        return employeeRepository.findById(employeeId)
+                .map(Employee::getHolidays)
                 .stream()
+                .flatMap(Collection::stream)
                 .map(holiday -> new HolidayDTO(
                         holiday.getId().toString(),
                         holiday.getLabel(),
-                        holiday.getEmployeeId(),
+                        holiday.getEmployee().getId(),
                         holiday.getStartOfHoliday().toString(),
                         holiday.getEndOfHoliday().toString(),
                         holiday.getStatus().toString()
@@ -65,12 +78,28 @@ public class HolidaysService {
      * @return the {@link HolidayDTO} object representing the created holiday
      */
     public HolidayDTO createHoliday(HolidayDTO holidayDTO) {
+        Instant startOfHoliday = Instant.parse(holidayDTO.getStartOfHoliday());
+        Instant endOfHoliday = Instant.parse(holidayDTO.getEndOfHoliday());
+
+        if (!Instant.now().plus(5, ChronoUnit.DAYS).isBefore(startOfHoliday)) {
+            throw new InvalidHolidayStartDateException();
+
+        }
+
+        if (isOverlapping(endOfHoliday, startOfHoliday)) {
+            throw new InvalidHolidayOverlapException();
+        }
+
+        if (isGapLessThan3Days(holidayDTO.getEmployeeId(), startOfHoliday, endOfHoliday)) {
+            throw new InvalidHolidayGapException();
+        }
+
         Holiday holiday = holidayRepository.save(
                 Holiday.builder()
                         .label(holidayDTO.getHolidayLabel())
-                        .employeeId(holidayDTO.getEmployeeId())
-                        .startOfHoliday(Instant.parse(holidayDTO.getStartOfHoliday()))
-                        .endOfHoliday(Instant.parse(holidayDTO.getEndOfHoliday()))
+                        .employee(Employee.builder().id(holidayDTO.getEmployeeId()).build())
+                        .startOfHoliday(startOfHoliday)
+                        .endOfHoliday(endOfHoliday)
                         .status(Status.valueOf(holidayDTO.getStatus()))
                         .build()
         );
@@ -79,11 +108,12 @@ public class HolidaysService {
         return new HolidayDTO(
                 holiday.getId().toString(),
                 holiday.getLabel(),
-                holiday.getEmployeeId(),
+                holiday.getEmployee().getId(),
                 holiday.getStartOfHoliday().toString(),
                 holiday.getEndOfHoliday().toString(),
                 holiday.getStatus().toString());
     }
+
 
     /**
      * Updates an existing holiday based on the provided holiday data transfer object (DTO).
@@ -96,11 +126,26 @@ public class HolidaysService {
      */
     public HolidayDTO updateHoliday(HolidayDTO holidayDTO) {
 
+        Instant startOfHoliday = Instant.parse(holidayDTO.getStartOfHoliday());
+        Instant endOfHoliday = Instant.parse(holidayDTO.getEndOfHoliday());
+
+        if (!Instant.now().plus(5, ChronoUnit.DAYS).isBefore(startOfHoliday)) {
+            throw new InvalidHolidayStartDateException();
+
+        }
+        if (isOverlapping(endOfHoliday, startOfHoliday)) {
+            throw new InvalidHolidayOverlapException();
+        }
+
+        if (isGapLessThan3Days(holidayDTO.getEmployeeId(), startOfHoliday, endOfHoliday)) {
+            throw new InvalidHolidayGapException();
+        }
+
         holidayRepository.save(
                 Holiday.builder()
                         .id(UUID.fromString(holidayDTO.getHolidayId()))
                         .label(holidayDTO.getHolidayLabel())
-                        .employeeId(holidayDTO.getEmployeeId())
+                        .employee(Employee.builder().id(holidayDTO.getEmployeeId()).build())
                         .startOfHoliday(Instant.parse(holidayDTO.getStartOfHoliday()))
                         .endOfHoliday(Instant.parse(holidayDTO.getEndOfHoliday()))
                         .status(Status.valueOf(holidayDTO.getStatus()))
@@ -118,7 +163,49 @@ public class HolidaysService {
      * @param holidayId the unique identifier of the holiday to be deleted
      */
     public void deleteHoliday(UUID holidayId) {
+
+        Holiday holiday = holidayRepository.findById(holidayId).orElseThrow();
+        if (!Instant.now().plus(5, ChronoUnit.DAYS).isBefore(holiday.getStartOfHoliday())) {
+            throw new InvalidHolidayCancellationException();
+
+        }
+
         holidayRepository.deleteById(holidayId);
     }
 
+
+    private boolean isOverlapping(Instant endOfHoliday, Instant startOfHoliday) {
+        return holidayRepository
+                .findAll()
+                .stream()
+                .anyMatch(holiday -> {  // Filter for overlapping holidays
+                    Instant existingStart = holiday.getStartOfHoliday();
+                    Instant existingEnd = holiday.getEndOfHoliday();
+
+                    // Check for overlap
+                    return (existingStart.isBefore(endOfHoliday) || existingStart.equals(endOfHoliday)) &&
+                            (startOfHoliday.isBefore(existingEnd) || startOfHoliday.equals(existingEnd));
+                });
+    }
+
+    private boolean isGapLessThan3Days(String employeeId, Instant endOfHoliday, Instant startOfHoliday) {
+        return employeeRepository.findById(employeeId)
+                .map(Employee::getHolidays)
+                .stream()
+                .flatMap(Collection::stream)
+                .anyMatch(holiday -> {
+                    System.out.println("----------");
+                    System.out.println(holiday.getStartOfHoliday());
+                    System.out.println(holiday.getEndOfHoliday());
+                    Instant existingStart = holiday.getStartOfHoliday();
+                    Instant existingEnd = holiday.getEndOfHoliday();
+                    // Check if there is less than 3 days gap between the new holiday and existing holidays
+                    long daysBetweenStartAndExistingEnd = Duration.between(existingEnd, startOfHoliday).toDays();
+                    long daysBetweenExistingStartAndEnd = Duration.between(endOfHoliday, existingStart).toDays();
+
+                    // Check if the gap is less than 3 days
+                    return (daysBetweenStartAndExistingEnd < 3 && daysBetweenStartAndExistingEnd >= 0) ||
+                            (daysBetweenExistingStartAndEnd < 3 && daysBetweenExistingStartAndEnd >= 0);
+                });
+    }
 }
